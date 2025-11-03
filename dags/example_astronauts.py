@@ -261,8 +261,9 @@ def example_astronauts():
 
     # Use dynamic task mapping to run the print_astronaut_craft task for each
     # Astronaut in space with enriched spacecraft data
-    print_astronaut_craft.partial(greeting="Hello! :)").expand(
-        person_in_space=enriched_astronauts  # Define dependencies using TaskFlow API syntax
+    # The expand() method creates dynamic mapped tasks based on the list
+    _ = print_astronaut_craft.partial(greeting="Hello! :)").expand(
+        person_in_space=enriched_astronauts
     )
 
     # Combine data and analyze correlation (using original astronaut list)
