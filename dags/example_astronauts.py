@@ -1,17 +1,19 @@
 """
-## Astronaut ETL example DAG with Weather Data Correlation
+## Astronaut ETL example DAG with Weather Data Correlation and Spacecraft Information
 
 This DAG queries the list of astronauts currently in space from the
-Open Notify API and prints each astronaut's name and flying craft.
-It also fetches weather data and analyzes the correlation between
-the number of astronauts in space and weather conditions.
+Open Notify API and enriches the data with detailed spacecraft information
+including models, operating agencies, and countries. It also fetches weather
+data and analyzes the correlation between the number of astronauts in space
+and weather conditions.
 
 There are multiple tasks:
 1. Get astronaut data from the API
-2. Get weather data from Open-Meteo API (ISS location)
-3. Print astronaut information using dynamic task mapping
-4. Combine astronaut and weather data
-5. Perform correlation analysis
+2. Enrich astronaut data with spacecraft models, agencies, and countries
+3. Display detailed astronaut and spacecraft information
+4. Get weather data from Open-Meteo API (ISS location)
+5. Combine enriched astronaut data with weather data
+6. Perform correlation analysis
 
 All tasks are written in Python using Airflow's TaskFlow API, which allows
 you to easily turn Python functions into Airflow tasks, and automatically
@@ -164,56 +166,87 @@ def example_astronauts():
         return current_weather
 
     @task
-    def print_astronaut_craft(greeting: str, person_in_space: dict) -> None:
+    def display_enriched_astronaut_data(enriched_astronauts: list[dict]) -> None:
         """
-        This task creates a detailed print statement with astronaut information
-        including their name, spacecraft, spacecraft model, operating agencies,
-        and countries. Uses enriched data from the spacecraft enrichment task.
+        Displays detailed information about each astronaut including
+        spacecraft models, operating agencies, and countries.
         """
-        name = person_in_space["name"]
-        craft = person_in_space["craft"]
-        spacecraft_model = person_in_space.get("spacecraft_model", craft)
-        spacecraft_type = person_in_space.get("spacecraft_type", "Unknown")
-        agencies = person_in_space.get("operating_agencies", [])
-        countries = person_in_space.get("operating_countries", [])
-        launch_year = person_in_space.get("launch_year")
-        crew_capacity = person_in_space.get("crew_capacity")
+        print("\n" + "=" * 80)
+        print("ASTRONAUTS CURRENTLY IN SPACE - DETAILED REPORT")
+        print("=" * 80 + "\n")
 
-        print(f"\n{'=' * 60}")
-        print(f"{name} is currently in space! {greeting}")
-        print(f"{'=' * 60}")
-        print(f"Spacecraft: {craft}")
-        print(f"Model: {spacecraft_model}")
-        print(f"Type: {spacecraft_type}")
-        print(f"Operating Agencies: {', '.join(agencies)}")
-        print(f"Operating Countries: {', '.join(countries)}")
-        if launch_year:
-            print(f"Launch Year: {launch_year}")
-        if crew_capacity:
-            print(f"Crew Capacity: {crew_capacity}")
-        print(f"{'=' * 60}\n")
+        for idx, person in enumerate(enriched_astronauts, 1):
+            name = person["name"]
+            craft = person["craft"]
+            spacecraft_model = person.get("spacecraft_model", craft)
+            spacecraft_type = person.get("spacecraft_type", "Unknown")
+            agencies = person.get("operating_agencies", [])
+            countries = person.get("operating_countries", [])
+            launch_year = person.get("launch_year")
+            crew_capacity = person.get("crew_capacity")
+
+            print(f"[{idx}] {name}")
+            print(f"    Spacecraft: {craft}")
+            print(f"    Model: {spacecraft_model}")
+            print(f"    Type: {spacecraft_type}")
+            print(f"    Operating Agencies: {', '.join(agencies)}")
+            print(f"    Operating Countries: {', '.join(countries)}")
+            if launch_year:
+                print(f"    Launch Year: {launch_year}")
+            if crew_capacity:
+                print(f"    Crew Capacity: {crew_capacity}")
+            print()
+
+        print("=" * 80)
+        print(f"Total astronauts in space: {len(enriched_astronauts)}")
+        print("=" * 80 + "\n")
 
     @task
-    def combine_data(astronauts: list[dict], weather: dict, **context) -> pd.DataFrame:
+    def combine_data(
+        enriched_astronauts: list[dict], weather: dict, **context
+    ) -> pd.DataFrame:
         """
         Combines astronaut and weather data into a pandas DataFrame
         for analysis. Creates a record with astronaut count and weather metrics.
         """
-        number_of_astronauts = context["ti"].xcom_pull(
-            task_ids="get_astronauts", key="number_of_people_in_space"
-        )
+        number_of_astronauts = len(enriched_astronauts)
+
+        # Extract spacecraft information for summary
+        spacecrafts = {}
+        for person in enriched_astronauts:
+            craft = person["craft"]
+            if craft not in spacecrafts:
+                spacecrafts[craft] = {
+                    "model": person.get("spacecraft_model", craft),
+                    "count": 0,
+                    "agencies": person.get("operating_agencies", []),
+                    "countries": person.get("operating_countries", []),
+                }
+            spacecrafts[craft]["count"] += 1
+
+        # Display spacecraft summary
+        print("\n" + "=" * 80)
+        print("SPACECRAFT SUMMARY")
+        print("=" * 80)
+        for craft, info in spacecrafts.items():
+            print(f"\n{craft} ({info['model']})")
+            print(f"  Astronauts aboard: {info['count']}")
+            print(f"  Agencies: {', '.join(info['agencies'])}")
+            print(f"  Countries: {', '.join(info['countries'])}")
+        print("=" * 80 + "\n")
 
         # Create a DataFrame with combined data
         data = {
             "timestamp": [weather["timestamp"]],
             "num_astronauts": [number_of_astronauts],
+            "num_spacecraft": [len(spacecrafts)],
             "temperature": [weather["temperature"]],
             "wind_speed": [weather["wind_speed"]],
             "cloud_cover": [weather["cloud_cover"]],
         }
 
         df = pd.DataFrame(data)
-        print(f"Combined data:\n{df}")
+        print(f"\nCombined Analysis Data:\n{df}\n")
         return df
 
     @task
@@ -259,15 +292,11 @@ def example_astronauts():
     enriched_astronauts = enrich_spacecraft_data(astronaut_list)
     weather = get_weather_data()
 
-    # Use dynamic task mapping to run the print_astronaut_craft task for each
-    # Astronaut in space with enriched spacecraft data
-    # The expand() method creates dynamic mapped tasks based on the list
-    _ = print_astronaut_craft.partial(greeting="Hello! :)").expand(
-        person_in_space=enriched_astronauts
-    )
+    # Display enriched astronaut data with spacecraft information
+    display_enriched_astronaut_data(enriched_astronauts)
 
-    # Combine data and analyze correlation (using original astronaut list)
-    combined = combine_data(astronaut_list, weather)
+    # Combine enriched data with weather and analyze correlation
+    combined = combine_data(enriched_astronauts, weather)
     analyze_correlation(combined)
 
 
