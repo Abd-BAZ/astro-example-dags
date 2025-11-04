@@ -268,7 +268,7 @@ def example_astronauts():
             params = {
                 "latitude": lat,
                 "longitude": lon,
-                "current": "temperature_2m,wind_speed_10m,cloud_cover",
+                "current": "temperature_2m,relative_humidity_2m,wind_speed_10m,cloud_cover,weather_code",
                 "timezone": "UTC",
             }
 
@@ -278,8 +278,10 @@ def example_astronauts():
 
             current_weather = {
                 "temperature": weather_data["current"]["temperature_2m"],
+                "humidity": weather_data["current"]["relative_humidity_2m"],
                 "wind_speed": weather_data["current"]["wind_speed_10m"],
                 "cloud_cover": weather_data["current"]["cloud_cover"],
+                "weather_code": weather_data["current"]["weather_code"],
                 "timestamp": weather_data["current"]["time"],
             }
 
@@ -520,6 +522,467 @@ def example_astronauts():
         return spacecraft_groups
 
     @task
+    def map_spacecraft_assignments(astronauts: list[dict]) -> dict[str, list[str]]:
+        """
+        Maps spacecraft names to lists of astronauts currently assigned to them.
+        Returns a dictionary where keys are spacecraft names and values are lists of astronaut names.
+        """
+        spacecraft_assignments = {}
+
+        for astronaut in astronauts:
+            spacecraft_name = astronaut["craft"]
+            astronaut_name = astronaut["name"]
+
+            if spacecraft_name not in spacecraft_assignments:
+                spacecraft_assignments[spacecraft_name] = []
+
+            spacecraft_assignments[spacecraft_name].append(astronaut_name)
+
+        print(
+            f"\nMapped {len(astronauts)} astronauts to {len(spacecraft_assignments)} spacecraft"
+        )
+        return spacecraft_assignments
+
+    @task
+    def calculate_mission_distance(enriched_astronauts: list[dict]) -> dict[str, dict]:
+        """
+        Calculates the total kilometers traveled per astronaut based on their spacecraft's
+        orbital speed and estimated mission duration. Uses orbital speed and period data.
+        """
+        astronaut_distances = {}
+
+        # Simulated mission duration in days (for demonstration)
+        # In a real scenario, this would come from actual mission start dates
+        estimated_mission_days = 180  # ~6 months typical mission duration
+
+        print("\n" + "=" * 80)
+        print("MISSION DISTANCE CALCULATIONS")
+        print("=" * 80)
+        print(f"Estimated mission duration: {estimated_mission_days} days\n")
+
+        for astronaut in enriched_astronauts:
+            name = astronaut["name"]
+            craft = astronaut["craft"]
+            orbital_speed_kmh = astronaut.get("orbital_speed_kmh")
+            orbital_period_min = astronaut.get("orbital_period_min")
+
+            if orbital_speed_kmh:
+                # Calculate distance traveled
+                hours_in_mission = estimated_mission_days * 24
+                total_distance_km = orbital_speed_kmh * hours_in_mission
+
+                # Calculate number of orbits completed
+                orbits_completed = 0
+                if orbital_period_min:
+                    minutes_in_mission = estimated_mission_days * 24 * 60
+                    orbits_completed = minutes_in_mission / orbital_period_min
+
+                astronaut_distances[name] = {
+                    "spacecraft": craft,
+                    "orbital_speed_kmh": orbital_speed_kmh,
+                    "mission_days": estimated_mission_days,
+                    "total_distance_km": total_distance_km,
+                    "total_distance_miles": total_distance_km
+                    * 0.621371,  # Convert to miles
+                    "orbits_completed": orbits_completed,
+                    "distance_per_day_km": total_distance_km / estimated_mission_days,
+                }
+
+                print(f"{name} ({craft}):")
+                print(f"  Orbital Speed: {orbital_speed_kmh:,} km/h")
+                print(
+                    f"  Total Distance: {total_distance_km:,.0f} km ({total_distance_km * 0.621371:,.0f} miles)"
+                )
+                print(
+                    f"  Distance per Day: {total_distance_km / estimated_mission_days:,.0f} km"
+                )
+                if orbits_completed > 0:
+                    print(f"  Orbits Completed: {orbits_completed:,.0f}")
+                print()
+            else:
+                # Handle cases where orbital speed is not available
+                astronaut_distances[name] = {
+                    "spacecraft": craft,
+                    "orbital_speed_kmh": None,
+                    "mission_days": estimated_mission_days,
+                    "total_distance_km": None,
+                    "total_distance_miles": None,
+                    "orbits_completed": None,
+                    "distance_per_day_km": None,
+                }
+                print(f"{name} ({craft}): Orbital data not available\n")
+
+        print("=" * 80 + "\n")
+        return astronaut_distances
+
+    @task
+    def evaluate_health_metrics(astronauts: list[dict]) -> dict[str, dict]:
+        """
+        Evaluates health metrics for each astronaut and assigns risk scores.
+        Simulates health data including oxygen saturation, heart rate, and blood pressure.
+
+        Risk Categories:
+        - Normal: All vitals within healthy ranges
+        - Monitor: One or more vitals slightly elevated
+        - At Risk: One or more vitals significantly outside normal ranges
+        - Critical: Multiple vitals in dangerous ranges
+        """
+        import random
+
+        health_evaluations = {}
+
+        print("\n" + "=" * 80)
+        print("ASTRONAUT HEALTH METRICS EVALUATION")
+        print("=" * 80)
+        print("Note: Simulated health data for demonstration purposes\n")
+
+        for astronaut in astronauts:
+            name = astronaut["name"]
+            craft = astronaut["craft"]
+
+            # Simulate health metrics (in real scenario, this would come from medical sensors)
+            # Most astronauts have normal vitals, with occasional variations
+            oxygen_saturation = random.randint(92, 100)  # Normal: 95-100%
+            heart_rate = random.randint(55, 115)  # Normal: 60-100 bpm
+            systolic_bp = random.randint(100, 145)  # Normal: 110-130 mmHg
+            diastolic_bp = random.randint(60, 95)  # Normal: 70-85 mmHg
+            body_temp = round(random.uniform(36.1, 38.2), 1)  # Normal: 36.5-37.5°C
+
+            # Evaluate each metric
+            risk_factors = []
+            risk_score = 0
+
+            # Oxygen saturation evaluation
+            if oxygen_saturation < 90:
+                risk_factors.append("Critical oxygen level")
+                risk_score += 3
+            elif oxygen_saturation < 95:
+                risk_factors.append("Low oxygen saturation")
+                risk_score += 2
+
+            # Heart rate evaluation
+            if heart_rate > 120 or heart_rate < 50:
+                risk_factors.append("Critical heart rate")
+                risk_score += 3
+            elif heart_rate > 100 or heart_rate < 60:
+                risk_factors.append("Elevated/Low heart rate")
+                risk_score += 1
+
+            # Blood pressure evaluation
+            if systolic_bp > 140 or systolic_bp < 90:
+                risk_factors.append("Abnormal blood pressure")
+                risk_score += 2
+            elif systolic_bp > 130 or diastolic_bp > 85:
+                risk_factors.append("Slightly elevated blood pressure")
+                risk_score += 1
+
+            # Body temperature evaluation
+            if body_temp > 38.0 or body_temp < 36.0:
+                risk_factors.append("Abnormal body temperature")
+                risk_score += 2
+            elif body_temp > 37.5 or body_temp < 36.5:
+                risk_factors.append("Slight temperature variation")
+                risk_score += 1
+
+            # Determine overall health status
+            if risk_score == 0:
+                health_status = "Normal"
+                status_emoji = "✓"
+            elif risk_score <= 2:
+                health_status = "Monitor"
+                status_emoji = "⚠"
+            elif risk_score <= 4:
+                health_status = "At Risk"
+                status_emoji = "⚠⚠"
+            else:
+                health_status = "Critical"
+                status_emoji = "⚠⚠⚠"
+
+            health_evaluations[name] = {
+                "spacecraft": craft,
+                "oxygen_saturation": oxygen_saturation,
+                "heart_rate": heart_rate,
+                "systolic_bp": systolic_bp,
+                "diastolic_bp": diastolic_bp,
+                "body_temp": body_temp,
+                "risk_score": risk_score,
+                "health_status": health_status,
+                "risk_factors": risk_factors,
+            }
+
+            # Display health report
+            print(f"{name} ({craft}) - {health_status} {status_emoji}")
+            print(f"  Oxygen Saturation: {oxygen_saturation}% (Normal: 95-100%)")
+            print(f"  Heart Rate: {heart_rate} bpm (Normal: 60-100 bpm)")
+            print(
+                f"  Blood Pressure: {systolic_bp}/{diastolic_bp} mmHg (Normal: 110-130/70-85)"
+            )
+            print(f"  Body Temperature: {body_temp}°C (Normal: 36.5-37.5°C)")
+            print(f"  Risk Score: {risk_score}")
+            if risk_factors:
+                print(f"  Risk Factors: {', '.join(risk_factors)}")
+            print()
+
+        # Summary statistics
+        status_counts = {}
+        for evaluation in health_evaluations.values():
+            status = evaluation["health_status"]
+            status_counts[status] = status_counts.get(status, 0) + 1
+
+        print("-" * 80)
+        print("HEALTH STATUS SUMMARY:")
+        for status, count in sorted(status_counts.items()):
+            print(f"  {status}: {count} astronaut(s)")
+        print("=" * 80 + "\n")
+
+        return health_evaluations
+
+    @task
+    def analyze_team_diversity(astronauts: list[dict]) -> dict[str, dict]:
+        """
+        Analyzes crew diversity for each spacecraft across multiple dimensions:
+        - Gender diversity
+        - Nationality diversity
+        - Experience level diversity
+
+        Returns diversity scores and metrics for each spacecraft.
+        """
+        import random
+
+        # Simulate demographic data (in real scenario, this would come from crew database)
+        genders = ["Male", "Female", "Non-binary"]
+        nationalities = [
+            "USA",
+            "Russia",
+            "China",
+            "Japan",
+            "Canada",
+            "Germany",
+            "France",
+            "Italy",
+            "UK",
+            "India",
+        ]
+        experience_levels = ["Rookie", "Intermediate", "Veteran", "Commander"]
+
+        # Add simulated diversity data to astronauts
+        enriched_data = []
+        for astronaut in astronauts:
+            enriched = astronaut.copy()
+            enriched["gender"] = random.choice(genders)
+            enriched["nationality"] = random.choice(nationalities)
+            enriched["experience_level"] = random.choice(experience_levels)
+            enriched["missions_completed"] = random.randint(0, 6)
+            enriched_data.append(enriched)
+
+        # Group by spacecraft
+        spacecraft_crews = {}
+        for astronaut in enriched_data:
+            craft = astronaut["craft"]
+            if craft not in spacecraft_crews:
+                spacecraft_crews[craft] = []
+            spacecraft_crews[craft].append(astronaut)
+
+        diversity_analysis = {}
+
+        print("\n" + "=" * 80)
+        print("SPACECRAFT CREW DIVERSITY ANALYSIS")
+        print("=" * 80)
+        print("Note: Simulated diversity data for demonstration purposes\n")
+
+        for craft, crew in spacecraft_crews.items():
+            crew_size = len(crew)
+
+            # Gender diversity calculation
+            gender_counts = {}
+            for member in crew:
+                gender = member["gender"]
+                gender_counts[gender] = gender_counts.get(gender, 0) + 1
+
+            # Calculate gender diversity score (0-1, higher is more diverse)
+            # Using Simpson's Diversity Index: 1 - sum((n/N)^2)
+            gender_diversity = 1 - sum(
+                (count / crew_size) ** 2 for count in gender_counts.values()
+            )
+
+            # Nationality diversity calculation
+            nationality_counts = {}
+            for member in crew:
+                nationality = member["nationality"]
+                nationality_counts[nationality] = (
+                    nationality_counts.get(nationality, 0) + 1
+                )
+
+            nationality_diversity = 1 - sum(
+                (count / crew_size) ** 2 for count in nationality_counts.values()
+            )
+
+            # Experience diversity calculation
+            experience_counts = {}
+            for member in crew:
+                experience = member["experience_level"]
+                experience_counts[experience] = experience_counts.get(experience, 0) + 1
+
+            experience_diversity = 1 - sum(
+                (count / crew_size) ** 2 for count in experience_counts.values()
+            )
+
+            # Overall diversity score (average of all dimensions)
+            overall_diversity = (
+                gender_diversity + nationality_diversity + experience_diversity
+            ) / 3
+
+            # Calculate additional metrics
+            avg_missions = sum(m["missions_completed"] for m in crew) / crew_size
+            unique_nationalities = len(nationality_counts)
+            unique_genders = len(gender_counts)
+            unique_experience_levels = len(experience_counts)
+
+            # Diversity rating
+            if overall_diversity >= 0.7:
+                diversity_rating = "Highly Diverse"
+            elif overall_diversity >= 0.5:
+                diversity_rating = "Moderately Diverse"
+            elif overall_diversity >= 0.3:
+                diversity_rating = "Low Diversity"
+            else:
+                diversity_rating = "Homogeneous"
+
+            diversity_analysis[craft] = {
+                "crew_size": crew_size,
+                "gender_diversity_score": round(gender_diversity, 3),
+                "nationality_diversity_score": round(nationality_diversity, 3),
+                "experience_diversity_score": round(experience_diversity, 3),
+                "overall_diversity_score": round(overall_diversity, 3),
+                "diversity_rating": diversity_rating,
+                "gender_distribution": gender_counts,
+                "nationality_distribution": nationality_counts,
+                "experience_distribution": experience_counts,
+                "unique_nationalities": unique_nationalities,
+                "unique_genders": unique_genders,
+                "unique_experience_levels": unique_experience_levels,
+                "average_missions_completed": round(avg_missions, 1),
+                "crew_members": [
+                    {
+                        "name": m["name"],
+                        "gender": m["gender"],
+                        "nationality": m["nationality"],
+                        "experience": m["experience_level"],
+                        "missions": m["missions_completed"],
+                    }
+                    for m in crew
+                ],
+            }
+
+            # Display diversity report
+            print(f"{craft}")
+            print("-" * 80)
+            print(f"Crew Size: {crew_size}")
+            print(
+                f"Overall Diversity Score: {overall_diversity:.3f} - {diversity_rating}"
+            )
+            print()
+            print(f"Gender Diversity Score: {gender_diversity:.3f}")
+            print(f"  Distribution: {dict(gender_counts)}")
+            print(f"  Unique Genders: {unique_genders}")
+            print()
+            print(f"Nationality Diversity Score: {nationality_diversity:.3f}")
+            print(f"  Distribution: {dict(nationality_counts)}")
+            print(f"  Unique Nationalities: {unique_nationalities}")
+            print()
+            print(f"Experience Diversity Score: {experience_diversity:.3f}")
+            print(f"  Distribution: {dict(experience_counts)}")
+            print(f"  Unique Experience Levels: {unique_experience_levels}")
+            print(f"  Average Missions Completed: {avg_missions:.1f}")
+            print()
+            print("Crew Members:")
+            for member in crew:
+                print(
+                    f"  • {member['name']}: {member['gender']}, {member['nationality']}, "
+                    f"{member['experience_level']} ({member['missions_completed']} missions)"
+                )
+            print()
+
+        # Overall summary
+        print("=" * 80)
+        print("DIVERSITY SUMMARY ACROSS ALL SPACECRAFT:")
+        avg_overall_diversity = sum(
+            d["overall_diversity_score"] for d in diversity_analysis.values()
+        ) / len(diversity_analysis)
+        print(f"Average Overall Diversity Score: {avg_overall_diversity:.3f}")
+        print()
+        for craft, data in diversity_analysis.items():
+            print(
+                f"  {craft}: {data['overall_diversity_score']:.3f} ({data['diversity_rating']})"
+            )
+        print("=" * 80 + "\n")
+
+        return diversity_analysis
+
+    @task
+    def summarize_weather_conditions(weather: dict) -> dict:
+        """
+        Summarizes weather data including temperature, humidity, and weather descriptions.
+        Converts weather codes to human-readable descriptions.
+        """
+        # WMO Weather interpretation codes mapping
+        weather_code_descriptions = {
+            0: "Clear sky",
+            1: "Mainly clear",
+            2: "Partly cloudy",
+            3: "Overcast",
+            45: "Fog",
+            48: "Depositing rime fog",
+            51: "Light drizzle",
+            53: "Moderate drizzle",
+            55: "Dense drizzle",
+            61: "Slight rain",
+            63: "Moderate rain",
+            65: "Heavy rain",
+            71: "Slight snow fall",
+            73: "Moderate snow fall",
+            75: "Heavy snow fall",
+            77: "Snow grains",
+            80: "Slight rain showers",
+            81: "Moderate rain showers",
+            82: "Violent rain showers",
+            85: "Slight snow showers",
+            86: "Heavy snow showers",
+            95: "Thunderstorm",
+            96: "Thunderstorm with slight hail",
+            99: "Thunderstorm with heavy hail",
+        }
+
+        weather_code = weather.get("weather_code", 0)
+        weather_description = weather_code_descriptions.get(
+            weather_code, f"Unknown (code: {weather_code})"
+        )
+
+        summary = {
+            "temperature": weather.get("temperature"),
+            "humidity": weather.get("humidity"),
+            "wind_speed": weather.get("wind_speed"),
+            "cloud_cover": weather.get("cloud_cover"),
+            "weather_description": weather_description,
+            "weather_code": weather_code,
+            "timestamp": weather.get("timestamp"),
+        }
+
+        # Display the summary
+        print("\n" + "=" * 80)
+        print("WEATHER CONDITIONS SUMMARY")
+        print("=" * 80)
+        print(f"Timestamp: {summary['timestamp']}")
+        print(f"Temperature: {summary['temperature']}°C")
+        print(f"Humidity: {summary['humidity']}%")
+        print(f"Wind Speed: {summary['wind_speed']} km/h")
+        print(f"Cloud Cover: {summary['cloud_cover']}%")
+        print(f"Weather: {summary['weather_description']}")
+        print("=" * 80 + "\n")
+
+        return summary
+
+    @task
     def analyze_correlation(df: pd.DataFrame) -> dict:
         """
         Performs correlation analysis between number of astronauts
@@ -564,6 +1027,21 @@ def example_astronauts():
 
     # Filter astronauts by spacecraft
     filter_astronauts_by_craft(astronaut_list)
+
+    # Map spacecraft assignments
+    map_spacecraft_assignments(astronaut_list)
+
+    # Evaluate health metrics
+    evaluate_health_metrics(astronaut_list)
+
+    # Analyze team diversity
+    analyze_team_diversity(astronaut_list)
+
+    # Calculate mission distances
+    calculate_mission_distance(enriched_astronauts)
+
+    # Summarize weather conditions
+    summarize_weather_conditions(weather)
 
     # Display enriched astronaut data with spacecraft information
     display_enriched_astronaut_data(enriched_astronauts)
