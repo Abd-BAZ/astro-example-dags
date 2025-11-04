@@ -491,6 +491,35 @@ def example_astronauts():
         return df
 
     @task
+    def filter_astronauts_by_craft(astronauts: list[dict]) -> dict[str, list[str]]:
+        """
+        Filters astronauts into groups by their spacecraft name.
+        Returns a dictionary mapping spacecraft names to lists of astronaut names.
+        """
+        spacecraft_groups = {}
+
+        for astronaut in astronauts:
+            craft_name = astronaut["craft"]
+            astronaut_name = astronaut["name"]
+
+            if craft_name not in spacecraft_groups:
+                spacecraft_groups[craft_name] = []
+
+            spacecraft_groups[craft_name].append(astronaut_name)
+
+        # Display the grouped results
+        print("\n" + "=" * 80)
+        print("ASTRONAUTS GROUPED BY SPACECRAFT")
+        print("=" * 80)
+        for craft, astronaut_names in spacecraft_groups.items():
+            print(f"\n{craft}: {len(astronaut_names)} astronaut(s)")
+            for name in astronaut_names:
+                print(f"  - {name}")
+        print("=" * 80 + "\n")
+
+        return spacecraft_groups
+
+    @task
     def analyze_correlation(df: pd.DataFrame) -> dict:
         """
         Performs correlation analysis between number of astronauts
@@ -532,6 +561,9 @@ def example_astronauts():
     astronaut_list = get_astronauts()
     enriched_astronauts = enrich_spacecraft_data(astronaut_list)
     weather = get_weather_data()
+
+    # Filter astronauts by spacecraft
+    filter_astronauts_by_craft(astronaut_list)
 
     # Display enriched astronaut data with spacecraft information
     display_enriched_astronaut_data(enriched_astronauts)
